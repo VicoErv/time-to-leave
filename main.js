@@ -1,9 +1,11 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, Tray } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, Tray, net } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
+const { shell } = require('electron');
+const isOnline = require('is-online');
 const { notify } = require('./js/notification');
-
 const { savePreferences } = require('./js/UserPreferences.js');
+const os = require('os');
 
 let savedPreferences = null;
 ipcMain.on('PREFERENCE_SAVE_DATA_NEEDED', (event, preferences) => {
@@ -20,6 +22,54 @@ const macOS = process.platform === 'darwin';
 var iconpath = path.join(__dirname, macOS ? 'assets/timer.png' : 'assets/timer.ico');
 var trayIcon = path.join(__dirname, macOS ? 'assets/timer-16-Template.png' : 'assets/timer-grey.ico');
 
+function shouldcheckForUpdates() {
+    var lastChecked = store.get('update-remind-me-after');
+    var today = new Date(),
+        todayDate = today.toISOString().substr(0, 10);
+    return !lastChecked || todayDate > lastChecked;
+}
+
+async function checkForUpdates() {
+    var online = await isOnline();
+    if (!online) {
+        return;
+    }
+    
+    const request = net.request('https://api.github.com/repos/thamara/time-to-leave/releases/latest');
+    request.on('response', (response) => {
+        response.on('data', (chunk) => {
+            var result = `${chunk}`;
+            var re = new RegExp('.*(tag_name).*');
+            var matches = result.matchAll(re);
+            for (const match of matches) {
+                var res = match[0].replace(/.*v(\d+\.\d+\.\d+).*/g, '$1');
+                if (app.getVersion() < res) {
+                    const options = {
+                        type: 'question',
+                        buttons: ['Dismiss', 'Download latest version', 'Remind me later'],
+                        defaultId: 1,
+                        title: 'TTL Check for updates',
+                        message: 'You are using an old version of TTL and is missing out on a lot of new cool things!',
+                    };
+              
+                    dialog.showMessageBox(null, options, (response) => {
+                        if (response == 1) {
+                            //Download latest version
+                            shell.openExternal('https://github.com/thamara/time-to-leave/releases/latest');
+                        } else if (response == 2) {
+                            // Remind me later
+                            var today = new Date(),
+                                todayDate = today.toISOString().substr(0, 10);
+                            store.set('update-remind-me-after', todayDate);
+                        }
+                    });
+                }
+            }
+        });
+    });
+    request.end();
+}
+
 function createWindow () {
   // Create the browser window.
     var menu = Menu.buildFromTemplate([
@@ -31,8 +81,8 @@ function createWindow () {
                     accelerator: macOS ? 'Command+,' : 'Control+,',
                     click () {
                         const htmlPath = path.join('file://', __dirname, 'src/preferences.html');
-                        let prefWindow = new BrowserWindow({ width: 600, 
-                            height: 450, 
+                        let prefWindow = new BrowserWindow({ width: 600,
+                            height: 450,
                             parent: win,
                             resizable: false,
                             icon: iconpath,
@@ -44,7 +94,7 @@ function createWindow () {
                         prefWindow.show();
                         //prefWindow.webContents.openDevTools()
                         prefWindow.on('close', function () {
-                            prefWindow = null; 
+                            prefWindow = null;
                             savePreferences(savedPreferences);
                             win.webContents.send('PREFERENCE_SAVED', savedPreferences);
                         });
@@ -81,7 +131,7 @@ function createWindow () {
                             title: 'Clear database',
                             message: 'Are you sure you want to clear all the data?',
                         };
-                  
+
                         dialog.showMessageBox(null, options, (response) => {
                             if (response == 1) {
                                 store.clear();
@@ -89,16 +139,16 @@ function createWindow () {
                                 win.reload();
                             }
                         });
-                    } 
+                    }
                 },
-                {type:'separator'}, 
+                {type:'separator'},
                 {
-                    label:'Exit', 
+                    label:'Exit',
                     accelerator: macOS ? 'CommandOrControl+Q' : 'Control+Q',
-                    click() { 
+                    click() {
                         app.isQuiting = true;
-                        app.quit(); 
-                    } 
+                        app.quit();
+                    }
                 }
             ]
         },
@@ -145,6 +195,51 @@ function createWindow () {
                     }
                 }
             ]
+        },
+        {
+            label: 'Help',
+            submenu: [
+                {
+                    label: 'TTL GitHub',
+                    click () {
+                        shell.openExternal('https://github.com/thamara/time-to-leave');
+                    }
+                },
+                {
+                    label: 'Latest releases',
+                    click () {
+                        shell.openExternal('https://github.com/thamara/time-to-leave/releases');
+                    }
+                },
+                {
+                    label: 'Check for updates',
+                    click () {
+                        checkForUpdates();
+                    }
+                },
+                {
+                    type: 'separator'
+                },
+                {
+                    label: 'About',
+                    click () {
+                        const version = app.getVersion();
+                        const electronVersion = process.versions.electron;
+                        const chromeVersion = process.versions.chrome;
+                        const nodeVersion = process.versions.node;
+                        const OSInfo = `${os.type()} ${os.arch()} ${os.release()}`;
+                        const detail = `Version: ${version}\nElectron: ${electronVersion}\nChrome: ${chromeVersion}\nNode.js: ${nodeVersion}\nOS: ${OSInfo}`;
+                        dialog.showMessageBox(BrowserWindow.getFocusedWindow(),
+                            {
+                                title: 'Time to Leave',
+                                message: 'Time to Leave',
+                                type: 'info',
+                                icon: iconpath,
+                                detail: `\n${detail}`
+                            });
+                    }
+                }
+            ]
         }
     ]);
 
@@ -162,7 +257,7 @@ function createWindow () {
     } else {
         win.setMenu(menu);
     }
-    
+
     // and load the index.html of the app.
     win.loadFile(path.join(__dirname, 'index.html'));
 
@@ -173,7 +268,8 @@ function createWindow () {
                 var now = new Date();
 
                 win.webContents.executeJavaScript('punchDate()');
-                notify(`Punched time ${now.getHours()}:${now.getMinutes()}`);
+                // Slice keeps "HH:MM" part of "HH:MM:SS GMT+HHMM (GMT+HH:MM)" time string
+                notify(`Punched time ${now.toTimeString().slice(0,5)}`);
             }
         },
         {
@@ -189,13 +285,13 @@ function createWindow () {
         }
     ]);
 
-    tray.on('click', function handleCliked() {       
+    tray.on('click', function handleCliked() {
         win.show();
-    });   
+    });
 
-    tray.on('right-click', function handleCliked() {       
+    tray.on('right-click', function handleCliked() {
         tray.popUpContextMenu(contextMenu);
-    });   
+    });
 
     // Open the DevTools.
     //win.webContents.openDevTools();
@@ -210,10 +306,14 @@ function createWindow () {
         if(app.isQuiting != undefined && !app.isQuiting){
             event.preventDefault();
             win.hide();
-        } 
-  
+        }
+
         return false;
     });
+
+    if (shouldcheckForUpdates()) {
+        checkForUpdates();
+    }
 }
 
 // This method will be called when Electron has finished

@@ -2,6 +2,7 @@ const electron = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { validateTime } = require('../js/time_math.js');
+const { isValidTheme } = require('../js/Themes.js');
 
 const defaultPreferences = {
     'hide-non-working-days': false,
@@ -14,6 +15,8 @@ const defaultPreferences = {
     'working-days-friday': true,
     'working-days-saturday': false,
     'working-days-sunday': false,
+    'theme': 'light',
+    'update-remind-me-after' : '2019-01-01',
 };
 
 /*
@@ -31,8 +34,9 @@ function savePreferences(preferencesOptions) {
     fs.writeFileSync(getPreferencesFilePath(), JSON.stringify(preferencesOptions));
 }
 
-/*
+/**
  * Loads preference from file.
+ * @return {Object}
  */
 function readPreferences() {
     var preferences;
@@ -44,68 +48,91 @@ function readPreferences() {
     return preferences ? preferences : {};
 }
 
+function getDerivedPrefsFromLoadedPrefs(loadedPreferences){
+    var derivedPreferences = {};
+    Object.keys(defaultPreferences).forEach(function(key){
+        derivedPreferences[key] = loadedPreferences[key] || defaultPreferences[key];
+    });
+
+    return defaultPreferences;
+}
+
 /*
- * Returns true if there's a valid preferences file.
- * Invalid files don't have all the settings listed.
+ * initializes users preferences if it is not already exists
+ * or any keys of existing preferences is invalid
  */
-function hasValidPreferencesFile() {
+function initPreferencesFileIfNotExistsOrInvalid() {
     if (!fs.existsSync(getPreferencesFilePath())) {
-        return false;
+        savePreferences(defaultPreferences);
+        return;
     }
+
+    var shouldSaveDerivedPrefs = false,
+        loadedPrefs = readPreferences(),
+        derivedPrefs = getDerivedPrefsFromLoadedPrefs(loadedPrefs),
+        loadedPref = Object.keys(loadedPrefs).sort(),
+        derivedPrefsKeys = Object.keys(derivedPrefs).sort();
+
     // Validate keys
-    var prefs = readPreferences();
-    var loadedPref = Object.keys(prefs).sort();
-    var referencePref = Object.keys(defaultPreferences).sort();
-    if (JSON.stringify(loadedPref) != JSON.stringify(referencePref)) {
-        return false;
+    if (JSON.stringify(loadedPref) != JSON.stringify(derivedPrefsKeys)) {
+        shouldSaveDerivedPrefs = true;
     }
+
     // Validate the values
-    for(var key of Object.keys(prefs)) {
-        var value = prefs[key];
+    for(var key of derivedPrefsKeys) {
+        var value = derivedPrefs[key];
         switch (key) {
         case 'hours-per-day': {
             if (!validateTime(value)) {
-                return false;
+                derivedPrefs[key] = defaultPreferences[key];
+                shouldSaveDerivedPrefs = true;
             }
             break;
         }
         case 'notification': {
             if (value != 'enabled' && value != 'disabled') {
-                return false;
+                derivedPrefs[key] = defaultPreferences[key];
+                shouldSaveDerivedPrefs = true;
             }
             break;
         }
-        case 'working-days-monday': 
-        case 'working-days-tuesday': 
-        case 'working-days-wednesday': 
-        case 'working-days-thursday': 
-        case 'working-days-friday': 
-        case 'working-days-saturday': 
+        case 'working-days-monday':
+        case 'working-days-tuesday':
+        case 'working-days-wednesday':
+        case 'working-days-thursday':
+        case 'working-days-friday':
+        case 'working-days-saturday':
         case 'working-days-sunday': {
             if (value != true && value != false) {
-                return false;
+                derivedPrefs[key] = defaultPreferences[key];
+                shouldSaveDerivedPrefs = true;
             }
             break;
         }
         case 'hide-non-working-days': {
             if (value != true && value != false) {
-                return false;
+                derivedPrefs[key] = defaultPreferences[key];
+                shouldSaveDerivedPrefs = true;
             }
             break;
         }
+        case 'theme' : {
+            return isValidTheme(value);
         }
-    } 
-    return true;
+        }
+    }
+
+    if(shouldSaveDerivedPrefs) {
+        savePreferences(derivedPrefs);
+    }
 }
 
-/*
+/**
  * Returns the user preferences.
+ * @return {{string: any}} Associative array of user settings
  */
-function getUserPreferences() {
-    // Initialize preferences file if it doesn't exists or is invalid
-    if (!hasValidPreferencesFile()) {
-        savePreferences(defaultPreferences);
-    }
+function getLoadedOrDerivedUserPreferences() {
+    initPreferencesFileIfNotExistsOrInvalid();
     return readPreferences();
 }
 
@@ -113,7 +140,7 @@ function getUserPreferences() {
  * Returns true if we should display week day.
  */
 function showWeekDay(weekDay) {
-    var preferences = getUserPreferences();
+    var preferences = getLoadedOrDerivedUserPreferences();
     switch (weekDay) {
     case 0: return preferences['working-days-sunday'];
     case 1: return preferences['working-days-monday'];
@@ -134,7 +161,7 @@ function showDay(year, month, day)  {
 }
 
 module.exports = {
-    getUserPreferences,
+    getUserPreferences: getLoadedOrDerivedUserPreferences,
     savePreferences,
     showDay
 };
