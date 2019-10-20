@@ -15,6 +15,7 @@ ipcMain.on('PREFERENCE_SAVE_DATA_NEEDED', (event, preferences) => {
 let win;
 let tray;
 const store = new Store();
+const waivedWorkdays = new Store({name: 'waived-workdays'});
 const macOS = process.platform === 'darwin';
 var iconpath = path.join(__dirname, macOS ? 'assets/timer.png' : 'assets/timer.ico');
 var trayIcon = path.join(__dirname, macOS ? 'assets/timer-16-Template.png' : 'assets/timer-grey.ico');
@@ -50,6 +51,27 @@ function createWindow () {
                     },
                 },
                 {
+                    label: 'Workday Waiver Manager',
+                    click () {
+                        const htmlPath = path.join('file://', __dirname, 'src/workday_waiver.html');
+                        let waiverWindow = new BrowserWindow({ width: 600, 
+                            height: 500, 
+                            parent: win,
+                            resizable: true,
+                            icon: iconpath,
+                            webPreferences: {
+                                nodeIntegration: true
+                            } });
+                        waiverWindow.setMenu(null);
+                        waiverWindow.loadURL(htmlPath);
+                        waiverWindow.show();
+                        waiverWindow.on('close', function () {
+                            waiverWindow = null; 
+                            win.reload();
+                        });
+                    },
+                },
+                {
                     label:'Clear database', 
                     click() { 
                         const options = {
@@ -63,6 +85,7 @@ function createWindow () {
                         dialog.showMessageBox(null, options, (response) => {
                             if (response == 1) {
                                 store.clear();
+                                waivedWorkdays.clear();
                                 win.reload();
                             }
                         });

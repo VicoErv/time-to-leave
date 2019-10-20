@@ -135,7 +135,7 @@ input[type="time"]::-webkit-clear-button {
   color: rgb(133, 133, 133);
 }
 
-.leave-by-text, .month-total-text {
+.leave-by-text, .month-total-text, .waived-day-text {
   text-align: right;
   margin-top: auto;
   font-size: 90%;
