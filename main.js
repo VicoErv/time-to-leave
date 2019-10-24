@@ -29,7 +29,7 @@ function shouldcheckForUpdates() {
     return !lastChecked || todayDate > lastChecked;
 }
 
-async function checkForUpdates() {
+async function checkForUpdates(showUpToDateDialog) {
     var online = await isOnline();
     if (!online) {
         return;
@@ -64,13 +64,16 @@ async function checkForUpdates() {
                         }
                     });
                 } else {
-                    const options = {
-                        type: 'info',
-                        buttons: ['OK'],
-                        title: 'TTL Check for updates',
-                        message: 'Your TTL is up to date.'
-                    };
-                    dialog.showMessageBox(null, options);
+                    if (showUpToDateDialog)
+                    {
+                        const options = {
+                            type: 'info',
+                            buttons: ['OK'],
+                            title: 'TTL Check for updates',
+                            message: 'Your TTL is up to date.'
+                        };
+                        dialog.showMessageBox(null, options);  
+                    }
                 }
             }
         });
@@ -84,30 +87,6 @@ function createWindow () {
         {
             label: 'Menu',
             submenu: [
-                {
-                    label: 'Preferences',
-                    accelerator: macOS ? 'Command+,' : 'Control+,',
-                    click () {
-                        const htmlPath = path.join('file://', __dirname, 'src/preferences.html');
-                        let prefWindow = new BrowserWindow({ width: 600,
-                            height: 450,
-                            parent: win,
-                            resizable: false,
-                            icon: iconpath,
-                            webPreferences: {
-                                nodeIntegration: true
-                            } });
-                        prefWindow.setMenu(null);
-                        prefWindow.loadURL(htmlPath);
-                        prefWindow.show();
-                        //prefWindow.webContents.openDevTools()
-                        prefWindow.on('close', function () {
-                            prefWindow = null;
-                            savePreferences(savedPreferences);
-                            win.webContents.send('PREFERENCE_SAVED', savedPreferences);
-                        });
-                    },
-                },
                 {
                     label: 'Workday Waiver Manager',
                     click () {
@@ -129,27 +108,7 @@ function createWindow () {
                         });
                     },
                 },
-                {
-                    label:'Clear database', 
-                    click() { 
-                        const options = {
-                            type: 'question',
-                            buttons: ['Cancel', 'Yes, please', 'No, thanks'],
-                            defaultId: 2,
-                            title: 'Clear database',
-                            message: 'Are you sure you want to clear all the data?',
-                        };
-
-                        dialog.showMessageBox(null, options, (response) => {
-                            if (response == 1) {
-                                store.clear();
-                                waivedWorkdays.clear();
-                                win.reload();
-                            }
-                        });
-                    }
-                },
-                {type:'separator'},
+                {type: 'separator'},
                 {
                     label:'Exit',
                     accelerator: macOS ? 'CommandOrControl+Q' : 'Control+Q',
@@ -182,7 +141,52 @@ function createWindow () {
                     label: 'Select All',
                     accelerator: 'Command+A',
                     selector: 'selectAll:'
-                }
+                },
+                {type: 'separator'},
+                {
+                    label: 'Preferences',
+                    accelerator: macOS ? 'Command+,' : 'Control+,',
+                    click () {
+                        const htmlPath = path.join('file://', __dirname, 'src/preferences.html');
+                        let prefWindow = new BrowserWindow({ width: 600,
+                            height: 450,
+                            parent: win,
+                            resizable: false,
+                            icon: iconpath,
+                            webPreferences: {
+                                nodeIntegration: true
+                            } });
+                        prefWindow.setMenu(null);
+                        prefWindow.loadURL(htmlPath);
+                        prefWindow.show();
+                        //prefWindow.webContents.openDevTools()
+                        prefWindow.on('close', function () {
+                            prefWindow = null;
+                            savePreferences(savedPreferences);
+                            win.webContents.send('PREFERENCE_SAVED', savedPreferences);
+                        });
+                    },
+                },
+                {
+                    label:'Clear database', 
+                    click() { 
+                        const options = {
+                            type: 'question',
+                            buttons: ['Cancel', 'Yes, please', 'No, thanks'],
+                            defaultId: 2,
+                            title: 'Clear database',
+                            message: 'Are you sure you want to clear all the data?',
+                        };
+
+                        dialog.showMessageBox(null, options, (response) => {
+                            if (response == 1) {
+                                store.clear();
+                                waivedWorkdays.clear();
+                                win.reload();
+                            }
+                        });
+                    }
+                },
             ]
         },
         {
@@ -216,7 +220,7 @@ function createWindow () {
                 {
                     label: 'Check for updates',
                     click () {
-                        checkForUpdates();
+                        checkForUpdates(/*showUpToDateDialog=*/true);
                     }
                 },
                 {
@@ -272,7 +276,7 @@ function createWindow () {
     tray = new Tray(trayIcon);
     var contextMenu = Menu.buildFromTemplate([
         {
-            label: 'Punch in time', click: function () {
+            label: 'Punch time', click: function () {
                 var now = new Date();
 
                 win.webContents.executeJavaScript('punchDate()');
@@ -320,7 +324,7 @@ function createWindow () {
     });
 
     if (shouldcheckForUpdates()) {
-        checkForUpdates();
+        checkForUpdates(/*showUpToDateDialog=*/false);
     }
 }
 
